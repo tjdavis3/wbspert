@@ -150,11 +150,24 @@ func buildDecoder(in *os.File) *csvutil.Decoder {
 	return decoder
 }
 
+func inArray(fld string, arr []string) bool {
+	for _, key := range arr {
+		if fld == key {
+			return true
+		}
+	}
+	return false
+}
+
 func PertChart(in *os.File, out *os.File, config *cfg) {
+	var allParents []string
+	var tasks []string
 	decoder := buildDecoder(in)
 	out.WriteString("@startuml PERT\n")
 	out.WriteString("left to right direction\n")
 	out.WriteString("map Start {\n}\n")
+	out.WriteString("map Finish {\n}\n")
+
 	var edges []string
 	for {
 		var sheet Sheet
@@ -165,6 +178,8 @@ func PertChart(in *os.File, out *os.File, config *cfg) {
 		}
 		out.WriteString(sheet.GetPertLevel(config.Level))
 		if sheet.GetLevel() >= config.Level {
+			tasks = append(tasks, sheet.WBS)
+			allParents = append(allParents, sheet.GetParents()...)
 			for _, p := range sheet.GetParents() {
 				if p == "" {
 					p = "Start"
@@ -175,6 +190,11 @@ func PertChart(in *os.File, out *os.File, config *cfg) {
 	}
 	for _, edge := range edges {
 		out.WriteString(edge)
+	}
+	for _, task := range tasks {
+		if !inArray(task, allParents) {
+			out.WriteString(fmt.Sprintf("%s --> Finish\n", task))
+		}
 	}
 	out.WriteString("@enduml\n")
 }
