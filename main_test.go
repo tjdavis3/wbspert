@@ -71,7 +71,7 @@ func TestSheet_GetPertNode(t *testing.T) {
 		{
 			name:   "Get a node",
 			fields: field,
-			want:   fmt.Sprintf(pertNode, field.Title, field.WBS, field.Duration),
+			want:   fmt.Sprintf(pertNode, field.WBS, field.Title, field.WBS, field.Duration),
 		},
 	}
 	for _, tt := range tests {
@@ -111,7 +111,7 @@ func TestSheet_GetPertLevel(t *testing.T) {
 			name:   "Test level 2",
 			fields: field,
 			args:   args{lvl: 2},
-			want:   fmt.Sprintf(pertNode, field.Title, field.WBS, field.Duration),
+			want:   fmt.Sprintf(pertNode, field.WBS, field.Title, field.WBS, field.Duration),
 		},
 		{
 			name:   "Test level 3",

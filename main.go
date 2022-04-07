@@ -79,7 +79,7 @@ func (s *Sheet) GetWBSLevel(lvl int) string {
 		printlvl = 2
 	}
 	str := fmt.Sprintf("%s", strings.Repeat("*", printlvl))
-	if s.GetLevel() > lvl {
+	if s.GetLevel() > lvl && lvl > 0 {
 		str = str + "_"
 	}
 	str = fmt.Sprintf("%s %s: %s", str, s.WBS, s.Title)

@@ -62,3 +62,19 @@ Start --> 1.1.2
 @enduml
 ```
 
+## Usage
+
+```
+  wbspert [OPTIONS]
+
+Application Options:
+  -i=         The input file or - for stdin (default: -)
+  -o=         The output file or - for stdout (default: -)
+  -l=         The WBS level to use for PERT charts (default: 3)
+  -w          Generate the WBS
+  -p          Generate the PERT
+  -t          Generate Markdown Table
+
+Help Options:
+  -h, --help  Show this help message
+```
