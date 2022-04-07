@@ -196,6 +196,7 @@ func PertChart(in *os.File, out *os.File, config *cfg) {
 			out.WriteString(fmt.Sprintf("%s --> Finish\n", task))
 		}
 	}
+	out.WriteString("\nfooter\nAs of %date()\nend footer\n")
 	out.WriteString("@enduml\n")
 }
 
@@ -213,6 +214,7 @@ func WBS(in *os.File, out *os.File, config *cfg) {
 		out.WriteString(sheet.GetWBSLevel(config.Level))
 		out.WriteString("\n")
 	}
+	out.WriteString("\nfooter\nAs of %date()\nend footer\n")
 	out.WriteString("@endwbs\n")
 }
 
