@@ -31,7 +31,9 @@ type Sheet struct {
 
 const pertNode = `
 map "%s: %s" as %s {
+	Early => ES:   | EF:    
 	Duration => %d
+	Late  => LS:   | LF:     
 }
 `
 const markDownRow = "| %s | %s | %s | %s |"
