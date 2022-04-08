@@ -27,10 +27,12 @@ type Sheet struct {
 	Title    string  `csv:"Title"`
 	Parents  string  `csv:"Parents"`
 	Duration float32 `csv:"Duration,omitempty"`
+	Status   string  `csv:"Status"`
 }
 
 const pertNode = `
-map "%s: %s" as %s {
+map "%s: %s" as %s %s {
+	Status => %s
 	Early => ES:   | EF:    
 	Duration => %0.1f
 	Late  => LS:   | LF:     
@@ -48,10 +50,32 @@ func (s *Sheet) GetParents() []string {
 	return parents
 }
 
+func (s *Sheet) GetStatusColor() string {
+	color := ""
+	switch strings.ToLower(s.Status) {
+	case "in progress":
+		color = "#DarkSeaGreen"
+	case "complete":
+		fallthrough
+	case "done":
+		color = "#Thistle"
+	case "blocked":
+		fallthrough
+	case "stalled":
+		color = "#Red"
+	case "waiting":
+		color = "#Pink"
+	case "milestone":
+		color = "#Orange"
+	}
+	return color
+}
+
 // GetPertNode returns a PlantUML string that represents
 // the task in a PERT chart
 func (s *Sheet) GetPertNode() string {
-	return fmt.Sprintf(pertNode, s.WBS, s.Title, s.WBS, s.Duration)
+	color := s.GetStatusColor()
+	return fmt.Sprintf(pertNode, s.WBS, s.Title, s.WBS, color, s.Status, s.Duration)
 }
 
 // GetPertLevel returns the PlantUML PERT node if the WBS task
@@ -81,6 +105,10 @@ func (s *Sheet) GetWBSLevel(lvl int) string {
 		printlvl = 2
 	}
 	str := fmt.Sprintf("%s", strings.Repeat("*", printlvl))
+	color := s.GetStatusColor()
+	if len(color) > 0 {
+		str = fmt.Sprintf("%s[%s]", str, color)
+	}
 	if s.GetLevel() > lvl && lvl > 0 {
 		str = str + "_"
 	}
