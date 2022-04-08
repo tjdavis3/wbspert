@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -20,6 +21,7 @@ type cfg struct {
 	WBS    bool   `short:"w"  description:"Generate the WBS"`
 	PERT   bool   `short:"p"  description:"Generate the PERT"`
 	Table  bool   `short:"t" description:"Generate Markdown Table"`
+	Embed  bool   `short:"e" description:"Embed in an existing file"`
 }
 
 type Sheet struct {
@@ -49,6 +51,16 @@ legend right
 end legend
 `
 const markDownRow = "| %s | %s | %s | %s |"
+
+const wbsEmbed = `(?m:^ *)<!--\s*wbs:embed:start\s*-->(?s:.*?)<!--\s*wbs:embed:end\s*-->(?m:\s*?$)`
+const wbsTableEmbed = `(?m:^ *)<!--\s*wbsTable:embed:start\s*-->(?s:.*?)<!--\s*wbsTable:embed:end\s*-->(?m:\s*?$)`
+const pertEmbed = `(?m:^ *)<!--\s*pert:embed:start\s*-->(?s:.*?)<!--\s*pert:embed:end\s*-->(?m:\s*?$)`
+
+var (
+	wbsRegex      = regexp.MustCompile(wbsEmbed)
+	wbsTableRegex = regexp.MustCompile(wbsTableEmbed)
+	pertRegex     = regexp.MustCompile(pertEmbed)
+)
 
 // GetParents splits the parents and returns
 // them as a list of strings
@@ -179,7 +191,7 @@ func main() {
 
 }
 
-func buildDecoder(in *os.File) *csvutil.Decoder {
+func buildDecoder(in io.Reader) *csvutil.Decoder {
 	csvReader := csv.NewReader(in)
 	decoder, err := csvutil.NewDecoder(csvReader)
 	if err != nil {
@@ -197,7 +209,7 @@ func inArray(fld string, arr []string) bool {
 	return false
 }
 
-func PertChart(in *os.File, out *os.File, config *cfg) {
+func PertChart(in io.Reader, out io.StringWriter, config *cfg) {
 	var allParents []string
 	var tasks []string
 	decoder := buildDecoder(in)
@@ -239,7 +251,7 @@ func PertChart(in *os.File, out *os.File, config *cfg) {
 	out.WriteString("@enduml\n")
 }
 
-func WBS(in *os.File, out *os.File, config *cfg) {
+func WBS(in io.Reader, out io.StringWriter, config *cfg) {
 	decoder := buildDecoder(in)
 	out.WriteString("@startwbs\n")
 	out.WriteString("* Project\n")
@@ -258,7 +270,7 @@ func WBS(in *os.File, out *os.File, config *cfg) {
 	out.WriteString("@endwbs\n")
 }
 
-func WBSTable(in *os.File, out *os.File, config *cfg) {
+func WBSTable(in io.Reader, out io.StringWriter, config *cfg) {
 	decoder := buildDecoder(in)
 	out.WriteString(genMarkdownTableHeader())
 	out.WriteString("\n")
