@@ -158,6 +158,7 @@ func genMarkdownTableHeader() string {
 }
 
 func main() {
+	var sheets []Sheet
 	config := &cfg{}
 	_, err := flags.Parse(config)
 	if err != nil {
@@ -169,7 +170,8 @@ func main() {
 		in = os.Stdin
 	} else {
 		in, err = os.Open(config.Input)
-		defer in.Close()
+		sheets = readFile(in)
+		in.Close()
 	}
 	if config.Output == "-" {
 		out = os.Stdout
@@ -186,20 +188,30 @@ func main() {
 	}
 
 	if config.PERT {
-		PertChart(in, out, config)
-		_, err := in.Seek(0, 0)
-		if err != nil {
-			log.Fatal(err)
-		}
+		PertChart(sheets, out, config)
 	}
 	if config.WBS {
-		WBS(in, out, config)
-		in.Seek(0, 0)
+		WBS(sheets, out, config)
 	}
 	if config.Table {
-		WBSTable(in, out, config)
+		WBSTable(sheets, out, config)
 	}
 
+}
+
+func readFile(in io.Reader) []Sheet {
+	var sheets []Sheet
+	decoder := buildDecoder(in)
+	for {
+		var sheet Sheet
+		if err := decoder.Decode(&sheet); err == io.EOF {
+			break
+		} else if err != nil {
+			log.Fatal(err)
+		}
+		sheets = append(sheets, sheet)
+	}
+	return sheets
 }
 
 func buildDecoder(in io.Reader) *csvutil.Decoder {
@@ -220,10 +232,9 @@ func inArray(fld string, arr []string) bool {
 	return false
 }
 
-func PertChart(in io.Reader, outfile *os.File, config *cfg) {
+func PertChart(sheets []Sheet, outfile *os.File, config *cfg) {
 	var allParents []string
 	var tasks []string
-	decoder := buildDecoder(in)
 	out := bytes.NewBufferString("")
 	out.WriteString("@startuml PERT\n")
 	out.WriteString("left to right direction\n")
@@ -231,13 +242,7 @@ func PertChart(in io.Reader, outfile *os.File, config *cfg) {
 	out.WriteString("map Finish {\n}\n")
 
 	var edges []string
-	for {
-		var sheet Sheet
-		if err := decoder.Decode(&sheet); err == io.EOF {
-			break
-		} else if err != nil {
-			log.Fatal(err)
-		}
+	for _, sheet := range sheets {
 		out.WriteString(sheet.GetPertLevel(config.Level))
 		if sheet.GetLevel() >= config.Level {
 			tasks = append(tasks, sheet.WBS)
@@ -268,19 +273,12 @@ func PertChart(in io.Reader, outfile *os.File, config *cfg) {
 	}
 }
 
-func WBS(in io.Reader, outfile *os.File, config *cfg) {
-	decoder := buildDecoder(in)
+func WBS(sheets []Sheet, outfile *os.File, config *cfg) {
 	out := bytes.NewBufferString("")
 
 	out.WriteString("@startwbs\n")
 	out.WriteString("* Project\n")
-	for {
-		var sheet Sheet
-		if err := decoder.Decode(&sheet); err == io.EOF {
-			break
-		} else if err != nil {
-			log.Fatal(err)
-		}
+	for _, sheet := range sheets {
 		out.WriteString(sheet.GetWBSLevel(config.Level))
 		out.WriteString("\n")
 	}
@@ -295,18 +293,11 @@ func WBS(in io.Reader, outfile *os.File, config *cfg) {
 
 }
 
-func WBSTable(in io.Reader, outfile *os.File, config *cfg) {
-	decoder := buildDecoder(in)
+func WBSTable(sheets []Sheet, outfile *os.File, config *cfg) {
 	out := bytes.NewBufferString("")
 	out.WriteString(genMarkdownTableHeader())
 	out.WriteString("\n")
-	for {
-		var sheet Sheet
-		if err := decoder.Decode(&sheet); err == io.EOF {
-			break
-		} else if err != nil {
-			log.Fatal(err)
-		}
+	for _, sheet := range sheets {
 		out.WriteString(sheet.MarkdownRow())
 		out.WriteString("\n")
 	}
