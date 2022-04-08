@@ -147,7 +147,11 @@ func (s *Sheet) GetWBSLevel(lvl int) string {
 
 // MarkdownRow returns a markdown table row representing the task
 func (s *Sheet) MarkdownRow() string {
-	return fmt.Sprintf(markDownRow, s.WBS, s.Title, s.Parents, strconv.FormatFloat(float64(s.Duration), 'f', 2, 32))
+	title := s.Title
+	if strings.ToLower(s.Status) == "done" || strings.ToLower(s.Status) == "complete" {
+		title = "~~" + title + "~~"
+	}
+	return fmt.Sprintf(markDownRow, s.WBS, title, s.Parents, strconv.FormatFloat(float64(s.Duration), 'f', 2, 32))
 }
 
 func genMarkdownTableHeader() string {
