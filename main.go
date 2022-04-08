@@ -302,7 +302,7 @@ func WBSTable(sheets []Sheet, outfile *os.File, config *cfg) {
 		out.WriteString("\n")
 	}
 	if config.Embed && config.Output != "-" {
-		embedContents(outfile, fmt.Sprintf("```plantuml\n%s\n```\n", out.String()), wbsTableRegex, wbsTableTag)
+		embedContents(outfile, out.String(), wbsTableRegex, wbsTableTag)
 	} else {
 		outfile.WriteString(out.String())
 	}
