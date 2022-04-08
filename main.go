@@ -38,6 +38,16 @@ map "%s: %s" as %s %s {
 	Late  => LS:   | LF:     
 }
 `
+const legend = `
+legend right
+	<size:18><u>Legend</u></size>
+	<back:Thistle>Complete</back>
+	<back:DarkSeaGreen>In Process</back>
+	<back:Pink>Waiting on Someone</back>
+	<back:Red>Blocked / Stalled</back>
+	<back:Orange>Milestone</back>
+end legend
+`
 const markDownRow = "| %s | %s | %s | %s |"
 
 // GetParents splits the parents and returns
@@ -225,6 +235,7 @@ func PertChart(in *os.File, out *os.File, config *cfg) {
 		}
 	}
 	out.WriteString("\nfooter\nAs of %date()\nend footer\n")
+	out.WriteString(legend)
 	out.WriteString("@enduml\n")
 }
 
@@ -243,6 +254,7 @@ func WBS(in *os.File, out *os.File, config *cfg) {
 		out.WriteString("\n")
 	}
 	out.WriteString("\nfooter\nAs of %date()\nend footer\n")
+	out.WriteString(legend)
 	out.WriteString("@endwbs\n")
 }
 
