@@ -74,7 +74,25 @@ Application Options:
   -w          Generate the WBS
   -p          Generate the PERT
   -t          Generate Markdown Table
+  -e          Embed in an existing file
 
 Help Options:
   -h, --help  Show this help message
+```
+
+### Embedding in an existing document
+
+When embedding the diagrams the program will look for the following tags and place 
+the diagram between them.  If they do not exist they will be added to the end of the 
+document.
+
+```
+<!-- pert:embed:start -->
+<!-- pert:embed:end -->
+
+<!-- wbs:embed:start -->
+<!-- wbs:embed:end -->
+
+<!-- wbsTable:embed:start -->
+<!-- wbsTable:embed:end -->
 ```

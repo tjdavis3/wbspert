@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -52,9 +53,15 @@ end legend
 `
 const markDownRow = "| %s | %s | %s | %s |"
 
-const wbsEmbed = `(?m:^ *)<!--\s*wbs:embed:start\s*-->(?s:.*?)<!--\s*wbs:embed:end\s*-->(?m:\s*?$)`
-const wbsTableEmbed = `(?m:^ *)<!--\s*wbsTable:embed:start\s*-->(?s:.*?)<!--\s*wbsTable:embed:end\s*-->(?m:\s*?$)`
-const pertEmbed = `(?m:^ *)<!--\s*pert:embed:start\s*-->(?s:.*?)<!--\s*pert:embed:end\s*-->(?m:\s*?$)`
+const (
+	wbsTag      = "wbs"
+	wbsTableTag = "wbsTable"
+	pertTag     = "pert"
+)
+
+var wbsEmbed = fmt.Sprintf(`(?m:^ *)<!--\s*%s:embed:start\s*-->(?s:.*?)<!--\s*%s:embed:end\s*-->(?m:\s*?$)`, wbsTag, wbsTag)
+var wbsTableEmbed = fmt.Sprintf(`(?m:^ *)<!--\s*%s:embed:start\s*-->(?s:.*?)<!--\s*%s:embed:end\s*-->(?m:\s*?$)`, wbsTableTag, wbsTableTag)
+var pertEmbed = fmt.Sprintf(`(?m:^ *)<!--\s*%s:embed:start\s*-->(?s:.*?)<!--\s*%s:embed:end\s*-->(?m:\s*?$)`, pertTag, pertTag)
 
 var (
 	wbsRegex      = regexp.MustCompile(wbsEmbed)
@@ -167,7 +174,11 @@ func main() {
 	if config.Output == "-" {
 		out = os.Stdout
 	} else {
-		out, err = os.Create(config.Output)
+		if config.Embed {
+			out, err = os.OpenFile(config.Output, os.O_RDWR|os.O_CREATE, os.ModePerm)
+		} else {
+			out, err = os.Create(config.Output)
+		}
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -209,10 +220,11 @@ func inArray(fld string, arr []string) bool {
 	return false
 }
 
-func PertChart(in io.Reader, out io.StringWriter, config *cfg) {
+func PertChart(in io.Reader, outfile *os.File, config *cfg) {
 	var allParents []string
 	var tasks []string
 	decoder := buildDecoder(in)
+	out := bytes.NewBufferString("")
 	out.WriteString("@startuml PERT\n")
 	out.WriteString("left to right direction\n")
 	out.WriteString("map Start {\n}\n")
@@ -249,10 +261,17 @@ func PertChart(in io.Reader, out io.StringWriter, config *cfg) {
 	out.WriteString("\nfooter\nAs of %date()\nend footer\n")
 	out.WriteString(legend)
 	out.WriteString("@enduml\n")
+	if config.Embed && config.Output != "-" {
+		embedContents(outfile, fmt.Sprintf("```plantuml\n%s\n```\n", out.String()), pertRegex, pertTag)
+	} else {
+		outfile.WriteString(out.String())
+	}
 }
 
-func WBS(in io.Reader, out io.StringWriter, config *cfg) {
+func WBS(in io.Reader, outfile *os.File, config *cfg) {
 	decoder := buildDecoder(in)
+	out := bytes.NewBufferString("")
+
 	out.WriteString("@startwbs\n")
 	out.WriteString("* Project\n")
 	for {
@@ -268,10 +287,17 @@ func WBS(in io.Reader, out io.StringWriter, config *cfg) {
 	out.WriteString("\nfooter\nAs of %date()\nend footer\n")
 	out.WriteString(legend)
 	out.WriteString("@endwbs\n")
+	if config.Embed && config.Output != "-" {
+		embedContents(outfile, fmt.Sprintf("```plantuml\n%s\n```\n", out.String()), wbsRegex, wbsTag)
+	} else {
+		outfile.WriteString(out.String())
+	}
+
 }
 
-func WBSTable(in io.Reader, out io.StringWriter, config *cfg) {
+func WBSTable(in io.Reader, outfile *os.File, config *cfg) {
 	decoder := buildDecoder(in)
+	out := bytes.NewBufferString("")
 	out.WriteString(genMarkdownTableHeader())
 	out.WriteString("\n")
 	for {
@@ -284,4 +310,39 @@ func WBSTable(in io.Reader, out io.StringWriter, config *cfg) {
 		out.WriteString(sheet.MarkdownRow())
 		out.WriteString("\n")
 	}
+	if config.Embed && config.Output != "-" {
+		embedContents(outfile, fmt.Sprintf("```plantuml\n%s\n```\n", out.String()), wbsTableRegex, wbsTableTag)
+	} else {
+		outfile.WriteString(out.String())
+	}
+}
+
+func embedContents(file *os.File, text string, re *regexp.Regexp, tag string) {
+	embedText := fmt.Sprintf("<!-- %s:embed:start -->\n\n%s\n<!-- %s:embed:end -->\n", tag, text, tag)
+
+	file.Seek(0, 0)
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		// log.Printf("unable to find output file %s for embedding. Creating a new file instead", file)
+		// return embedText
+		log.Fatal(err)
+	}
+
+	var replacements int
+	data = re.ReplaceAllFunc(data, func(_ []byte) []byte {
+		replacements++
+		return []byte(embedText)
+	})
+
+	if replacements == 0 {
+		// log.Printf("no embed markers found. Appending documentation to the end of the file instead")
+		data = []byte(fmt.Sprintf("%s\n\n%s", string(data), embedText))
+	}
+
+	file.Seek(0, 0)
+	if err = file.Truncate(0); err != nil {
+		log.Panic(err)
+	}
+	file.Write(data)
 }
