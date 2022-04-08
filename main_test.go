@@ -12,7 +12,7 @@ func TestSheet_GetParents(t *testing.T) {
 		WBS      string
 		Title    string
 		Parents  string
-		Duration int
+		Duration float32
 	}
 	tests := []struct {
 		name   string
@@ -60,7 +60,7 @@ func TestSheet_GetPertNode(t *testing.T) {
 		WBS      string
 		Title    string
 		Parents  string
-		Duration int
+		Duration float32
 	}
 	field := fields{WBS: "1.1", Title: "Test", Parents: "2.1.1, 3.1.1", Duration: 4}
 	tests := []struct {
@@ -94,7 +94,7 @@ func TestSheet_GetPertLevel(t *testing.T) {
 		WBS      string
 		Title    string
 		Parents  string
-		Duration int
+		Duration float32
 	}
 	field := fields{WBS: "1.1", Title: "Test", Parents: "2.1.1, 3.1.1", Duration: 4}
 
@@ -160,7 +160,7 @@ func TestSheet_GetWBS(t *testing.T) {
 		WBS      string
 		Title    string
 		Parents  string
-		Duration int
+		Duration float32
 		Status   string
 	}
 	l2field := fields{WBS: "1.1", Title: "Test", Parents: "2.1.1, 3.1.1", Duration: 4}

@@ -23,16 +23,16 @@ type cfg struct {
 }
 
 type Sheet struct {
-	WBS      string `csv:"Task"`
-	Title    string `csv:"Title"`
-	Parents  string `csv:"Parents"`
-	Duration int    `csv:"Duration,omitempty"`
+	WBS      string  `csv:"Task"`
+	Title    string  `csv:"Title"`
+	Parents  string  `csv:"Parents"`
+	Duration float32 `csv:"Duration,omitempty"`
 }
 
 const pertNode = `
 map "%s: %s" as %s {
 	Early => ES:   | EF:    
-	Duration => %d
+	Duration => %0.1f
 	Late  => LS:   | LF:     
 }
 `
@@ -90,7 +90,7 @@ func (s *Sheet) GetWBSLevel(lvl int) string {
 
 // MarkdownRow returns a markdown table row representing the task
 func (s *Sheet) MarkdownRow() string {
-	return fmt.Sprintf(markDownRow, s.WBS, s.Title, s.Parents, strconv.Itoa(s.Duration))
+	return fmt.Sprintf(markDownRow, s.WBS, s.Title, s.Parents, strconv.FormatFloat(float64(s.Duration), 'f', 2, 32))
 }
 
 func genMarkdownTableHeader() string {
