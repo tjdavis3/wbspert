@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -11,18 +12,28 @@ import (
 	"strconv"
 	"strings"
 
+	"ghprojects/projects"
+
 	flags "github.com/jessevdk/go-flags"
+	"github.com/jinzhu/copier"
 	"github.com/jszwec/csvutil"
 )
 
 type cfg struct {
-	Input  string `short:"i" default:"-" description:"The input file or - for stdin"`
-	Output string `short:"o" default:"-" description:"The output file or - for stdout"`
-	Level  int    `short:"l" default:"3" description:"The WBS level to use for PERT charts"`
-	WBS    bool   `short:"w"  description:"Generate the WBS"`
-	PERT   bool   `short:"p"  description:"Generate the PERT"`
-	Table  bool   `short:"t" description:"Generate Markdown Table"`
-	Embed  bool   `short:"e" description:"Embed in an existing file"`
+	Input      string `short:"i" default:"-" description:"The input file or - for stdin"`
+	Output     string `short:"o" default:"-" description:"The output file or - for stdout"`
+	Level      int    `short:"l" default:"3" description:"The WBS level to use for PERT charts"`
+	WBS        bool   `short:"w"  description:"Generate the WBS"`
+	PERT       bool   `short:"p"  description:"Generate the PERT"`
+	Table      bool   `short:"t" description:"Generate Markdown Table"`
+	Embed      bool   `short:"e" description:"Embed in an existing file"`
+	Token      string `long:"token" env:"GITHUB_TOKEN" long:"github-token" description:"Access token for calling Github API"`
+	Org        string `long:"org" default:"ringsq" description:"Github org containing the project"`
+	Project    string `short:"j" long:"project" description:"Github Project name"`
+	ByRepo     bool   `short:"r" description:"Do WBS by repo name"`
+	Kanban     bool   `short:"k" description:"Build a kanban table"`
+	Column     string `short:"c" default:"Status" description:"Column field for Kanban table"`
+	ActiveOnly bool   `short:"a" description:"Only show incomplete tasks"`
 }
 
 type Sheet struct {
@@ -51,22 +62,25 @@ legend right
 	<back:Orange>Milestone</back>
 end legend
 `
-const markDownRow = "| %s | %s | %s | %s |"
+const markDownRow = "| %s | %s | %s | %s | %s |"
 
 const (
 	wbsTag      = "wbs"
 	wbsTableTag = "wbsTable"
 	pertTag     = "pert"
+	kanbanTag   = "kanban"
 )
 
 var wbsEmbed = fmt.Sprintf(`(?m:^ *)<!--\s*%s:embed:start\s*-->(?s:.*?)<!--\s*%s:embed:end\s*-->(?m:\s*?$)`, wbsTag, wbsTag)
 var wbsTableEmbed = fmt.Sprintf(`(?m:^ *)<!--\s*%s:embed:start\s*-->(?s:.*?)<!--\s*%s:embed:end\s*-->(?m:\s*?$)`, wbsTableTag, wbsTableTag)
 var pertEmbed = fmt.Sprintf(`(?m:^ *)<!--\s*%s:embed:start\s*-->(?s:.*?)<!--\s*%s:embed:end\s*-->(?m:\s*?$)`, pertTag, pertTag)
+var kanbanEmbed = fmt.Sprintf(`(?m:^ *)<!--\s*%s:embed:start\s*-->(?s:.*?)<!--\s*%s:embed:end\s*-->(?m:\s*?$)`, kanbanTag, kanbanTag)
 
 var (
 	wbsRegex      = regexp.MustCompile(wbsEmbed)
 	wbsTableRegex = regexp.MustCompile(wbsTableEmbed)
 	pertRegex     = regexp.MustCompile(pertEmbed)
+	kanbanRegex   = regexp.MustCompile(kanbanEmbed)
 )
 
 // GetParents splits the parents and returns
@@ -100,11 +114,19 @@ func (s *Sheet) GetStatusColor() string {
 	return color
 }
 
+func (s *Sheet) IsCompleted() bool {
+	status := strings.ToLower(s.Status)
+	if status == "done" || strings.HasPrefix(status, "complete") {
+		return true
+	}
+	return false
+}
+
 // GetPertNode returns a PlantUML string that represents
 // the task in a PERT chart
 func (s *Sheet) GetPertNode() string {
 	color := s.GetStatusColor()
-	return fmt.Sprintf(pertNode, s.WBS, s.Title, s.WBS, color, s.Status, s.Duration)
+	return fmt.Sprintf(pertNode, s.WBS, strings.ReplaceAll(s.Title, `"`, ""), s.WBS, color, s.Status, s.Duration)
 }
 
 // GetPertLevel returns the PlantUML PERT node if the WBS task
@@ -151,18 +173,19 @@ func (s *Sheet) MarkdownRow() string {
 	if strings.ToLower(s.Status) == "done" || strings.ToLower(s.Status) == "complete" {
 		title = "~~" + title + "~~"
 	}
-	return fmt.Sprintf(markDownRow, s.WBS, title, s.Parents, strconv.FormatFloat(float64(s.Duration), 'f', 2, 32))
+	return fmt.Sprintf(markDownRow, s.WBS, s.Status, title, s.Parents, strconv.FormatFloat(float64(s.Duration), 'f', 2, 32))
 }
 
 func genMarkdownTableHeader() string {
 	return strings.Join([]string{
-		fmt.Sprintf(markDownRow, "WBS", "Task", "Parents", "Duration"),
-		fmt.Sprintf(markDownRow, "---", "----", "-------", "--------"),
+		fmt.Sprintf(markDownRow, "WBS", "Status", "Task", "Parents", "Duration"),
+		fmt.Sprintf(markDownRow, "---", "------", "----", "-------", "--------"),
 	}, "\n")
 }
 
 func main() {
 	var sheets []Sheet
+	var board *projects.Board
 	config := &cfg{}
 	_, err := flags.Parse(config)
 	if err != nil {
@@ -172,6 +195,23 @@ func main() {
 	var out *os.File
 	if config.Input == "-" {
 		in = os.Stdin
+	} else if config.Input == "gh" {
+
+		client := projects.NewClient(context.Background(), config.Token)
+		board, err = client.GetProject(config.Org, config.Project)
+		if err != nil {
+			log.Fatal(err)
+		}
+		var wbs []*projects.Card
+		if config.ByRepo {
+			wbs = board.GetRepoWBS()
+		} else {
+			wbs = board.GetWBSCards()
+		}
+		if err := copier.Copy(&sheets, wbs); err != nil {
+			log.Fatal(err)
+		}
+
 	} else {
 		in, err = os.Open(config.Input)
 		sheets = readFile(in)
@@ -199,6 +239,10 @@ func main() {
 	}
 	if config.Table {
 		WBSTable(sheets, out, config)
+	}
+
+	if config.Kanban {
+		Kanban(board, out, config)
 	}
 
 }
@@ -247,6 +291,12 @@ func PertChart(sheets []Sheet, outfile *os.File, config *cfg) {
 
 	var edges []string
 	for _, sheet := range sheets {
+		if strings.HasPrefix(sheet.WBS, "0.99") {
+			continue
+		}
+		if config.ActiveOnly && sheet.IsCompleted() {
+			continue
+		}
 		out.WriteString(sheet.GetPertLevel(config.Level))
 		if sheet.GetLevel() >= config.Level {
 			tasks = append(tasks, sheet.WBS)
@@ -277,12 +327,72 @@ func PertChart(sheets []Sheet, outfile *os.File, config *cfg) {
 	}
 }
 
+func Kanban(board *projects.Board, outfile *os.File, config *cfg) {
+	var rows [][]string
+	out := bytes.NewBufferString("")
+	if config.Column != "Status" {
+		board.SetCards(config.Column)
+	}
+
+	maxRows := determineRows(board.Columns)
+	rows = make([][]string, maxRows)
+	for i := range rows {
+		rows[i] = make([]string, len(board.Columns))
+	}
+
+	for _, col := range board.Columns {
+		fmt.Fprintf(out, "| %s ", col.Name)
+	}
+	fmt.Fprintln(out, "|")
+	for i := 0; i < len(board.Columns); i++ {
+		fmt.Fprint(out, "| --- ")
+	}
+	fmt.Fprintln(out, "|")
+
+	for colNum, curCol := range board.Columns {
+		for colRow, card := range curCol.Cards {
+			complete := ""
+			if card.IsCompleted() {
+				if config.ActiveOnly {
+					continue
+				}
+				complete = "~~"
+			}
+			rows[colRow][colNum] = fmt.Sprintf("%s%s%s", complete, card.Title, complete)
+		}
+	}
+	for _, row := range rows {
+		for _, col := range row {
+			fmt.Fprintf(out, "| %s ", col)
+		}
+		fmt.Fprintln(out, "|")
+	}
+	if config.Embed && config.Output != "-" {
+		embedContents(outfile, out.String(), kanbanRegex, kanbanTag)
+	} else {
+		outfile.WriteString(out.String())
+	}
+}
+
+func determineRows(cols []*projects.BoardColumn) int {
+	var maxRows int
+	for _, column := range cols {
+		if len(column.Cards) > maxRows {
+			maxRows = len(column.Cards)
+		}
+	}
+	return maxRows
+}
+
 func WBS(sheets []Sheet, outfile *os.File, config *cfg) {
 	out := bytes.NewBufferString("")
 
 	out.WriteString("@startwbs\n")
 	out.WriteString("* Project\n")
 	for _, sheet := range sheets {
+		if config.ActiveOnly && sheet.IsCompleted() {
+			continue
+		}
 		out.WriteString(sheet.GetWBSLevel(config.Level))
 		out.WriteString("\n")
 	}
@@ -302,6 +412,9 @@ func WBSTable(sheets []Sheet, outfile *os.File, config *cfg) {
 	out.WriteString(genMarkdownTableHeader())
 	out.WriteString("\n")
 	for _, sheet := range sheets {
+		if config.ActiveOnly && sheet.IsCompleted() {
+			continue
+		}
 		out.WriteString(sheet.MarkdownRow())
 		out.WriteString("\n")
 	}
