@@ -1,0 +1,26 @@
+FROM golang:alpine AS build
+# Set the working directory outside $GOPATH to enable the support for modules.
+RUN mkdir -p /go/src/wbsplugin
+WORKDIR /go/src/wbsplugin
+
+# Fetch dependencies first; they are less susceptible to change on every build
+# and will therefore be cached for speeding up the next build
+COPY ./go.mod ./go.sum ./
+RUN go mod download && go mod verify
+
+# Import the code from the context.
+COPY . .
+
+RUN go mod tidy
+RUN go build 
+
+FROM alpine:3.6 as alpine
+RUN apk add -U --no-cache ca-certificates
+
+FROM alpine:3.6
+
+COPY --from=alpine /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=build /go/src/wbsplugin/wbsplugin /bin/plugin
+COPY wbspert /bin/wbspert
+
+ENTRYPOINT ["/bin/plugin"]
