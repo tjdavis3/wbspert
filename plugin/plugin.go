@@ -14,15 +14,17 @@ import (
 
 type cfg struct {
 	Projects []struct {
-		Name     string
-		Output   string
-		Options  string
-		Level    int
-		Kanban   bool
-		WBS      bool
-		WBSTable bool
-		PERT     bool
-		Column   string
+		Name       string
+		Output     string
+		Options    string
+		Level      int
+		Kanban     bool
+		WBS        bool
+		WBSTable   bool
+		PERT       bool
+		Column     string
+		ActiveOnly bool
+                BugList    bool
 	}
 }
 
@@ -66,6 +68,9 @@ func main() {
 		if project.Column != "" {
 			args = append(args, "-c", project.Column)
 		}
+		if project.ActiveOnly {
+			args = append(args, "-a")
+		}
 		if project.Kanban {
 			args = append(args, "-k")
 		}
@@ -77,6 +82,9 @@ func main() {
 		}
 		if project.PERT {
 			args = append(args, "-p")
+		}
+                if project.BugList {
+			args = append(args, "-b")
 		}
 		if project.Level > 0 {
 			args = append(args, "-l", strconv.Itoa(project.Level))

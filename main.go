@@ -37,11 +37,12 @@ type cfg struct {
 }
 
 type Sheet struct {
-	WBS      string  `csv:"Task"`
-	Title    string  `csv:"Title"`
-	Parents  string  `csv:"Parents"`
-	Duration float32 `csv:"Duration,omitempty"`
-	Status   string  `csv:"Status"`
+	WBS      string   `csv:"Task"`
+	Title    string   `csv:"Title"`
+	Parents  string   `csv:"Parents"`
+	Duration float32  `csv:"Duration,omitempty"`
+	Status   string   `csv:"Status"`
+	Labels   []string `csv:"omitempty"`
 }
 
 const pertNode = `
@@ -69,18 +70,21 @@ const (
 	wbsTableTag = "wbsTable"
 	pertTag     = "pert"
 	kanbanTag   = "kanban"
+	bugTag      = "bug"
 )
 
 var wbsEmbed = fmt.Sprintf(`(?m:^ *)<!--\s*%s:embed:start\s*-->(?s:.*?)<!--\s*%s:embed:end\s*-->(?m:\s*?$)`, wbsTag, wbsTag)
 var wbsTableEmbed = fmt.Sprintf(`(?m:^ *)<!--\s*%s:embed:start\s*-->(?s:.*?)<!--\s*%s:embed:end\s*-->(?m:\s*?$)`, wbsTableTag, wbsTableTag)
 var pertEmbed = fmt.Sprintf(`(?m:^ *)<!--\s*%s:embed:start\s*-->(?s:.*?)<!--\s*%s:embed:end\s*-->(?m:\s*?$)`, pertTag, pertTag)
 var kanbanEmbed = fmt.Sprintf(`(?m:^ *)<!--\s*%s:embed:start\s*-->(?s:.*?)<!--\s*%s:embed:end\s*-->(?m:\s*?$)`, kanbanTag, kanbanTag)
+var bugEmbed = fmt.Sprintf(`(?m:^ *)<!--\s*%s:embed:start\s*-->(?s:.*?)<!--\s*%s:embed:end\s*-->(?m:\s*?$)`, bugTag, bugTag)
 
 var (
 	wbsRegex      = regexp.MustCompile(wbsEmbed)
 	wbsTableRegex = regexp.MustCompile(wbsTableEmbed)
 	pertRegex     = regexp.MustCompile(pertEmbed)
 	kanbanRegex   = regexp.MustCompile(kanbanEmbed)
+	bugRegex      = regexp.MustCompile(bugEmbed)
 )
 
 // GetParents splits the parents and returns
@@ -133,6 +137,9 @@ func (s *Sheet) GetPertNode() string {
 // is at least the level specified.  Otherwise an empty string
 // is returned.
 func (s *Sheet) GetPertLevel(lvl int) string {
+        if s.Status == "" {
+                return ""
+        }
 	if s.GetLevel() >= lvl {
 		return s.GetPertNode()
 	}
@@ -298,7 +305,7 @@ func PertChart(sheets []Sheet, outfile *os.File, config *cfg) {
 			continue
 		}
 		out.WriteString(sheet.GetPertLevel(config.Level))
-		if sheet.GetLevel() >= config.Level {
+		if sheet.GetLevel() >= config.Level && !(sheet.Status == "") {
 			tasks = append(tasks, sheet.WBS)
 			allParents = append(allParents, sheet.GetParents()...)
 			for _, p := range sheet.GetParents() {
