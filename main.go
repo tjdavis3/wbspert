@@ -33,6 +33,7 @@ type cfg struct {
 	ByRepo     bool   `short:"r" description:"Do WBS by repo name"`
 	Kanban     bool   `short:"k" description:"Build a kanban table"`
 	Column     string `short:"c" default:"Status" description:"Column field for Kanban table"`
+	BugList    bool   `short:"b" description:"Generate a buglist"`
 	ActiveOnly bool   `short:"a" description:"Only show incomplete tasks"`
 }
 
@@ -43,6 +44,7 @@ type Sheet struct {
 	Duration float32  `csv:"Duration,omitempty"`
 	Status   string   `csv:"Status"`
 	Labels   []string `csv:"omitempty"`
+	Repo     string   `csv:"omitempty"`
 }
 
 const pertNode = `
@@ -100,6 +102,8 @@ func (s *Sheet) GetParents() []string {
 func (s *Sheet) GetStatusColor() string {
 	color := ""
 	switch strings.ToLower(s.Status) {
+	case "under review":
+		fallthrough
 	case "in progress":
 		color = "#DarkSeaGreen"
 	case "complete":
@@ -137,9 +141,9 @@ func (s *Sheet) GetPertNode() string {
 // is at least the level specified.  Otherwise an empty string
 // is returned.
 func (s *Sheet) GetPertLevel(lvl int) string {
-        if s.Status == "" {
-                return ""
-        }
+	if s.Status == "" {
+		return ""
+	}
 	if s.GetLevel() >= lvl {
 		return s.GetPertNode()
 	}
@@ -250,6 +254,10 @@ func main() {
 
 	if config.Kanban {
 		Kanban(board, out, config)
+	}
+
+	if config.BugList {
+		BugList(sheets, out, config)
 	}
 
 }
@@ -427,6 +435,25 @@ func WBSTable(sheets []Sheet, outfile *os.File, config *cfg) {
 	}
 	if config.Embed && config.Output != "-" {
 		embedContents(outfile, out.String(), wbsTableRegex, wbsTableTag)
+	} else {
+		outfile.WriteString(out.String())
+	}
+}
+
+func BugList(sheets []Sheet, outfile *os.File, config *cfg) {
+	out := bytes.NewBufferString("")
+	out.WriteString("| Repo | Status | Title |\n")
+	out.WriteString("| --- | --- | --- |\n")
+	for _, sheet := range sheets {
+		if config.ActiveOnly && sheet.IsCompleted() {
+			continue
+		}
+		if inArray("bug", sheet.Labels) {
+			out.WriteString(fmt.Sprintf("| %s | %s | %s |\n", sheet.Repo, sheet.Status, sheet.Title))
+		}
+	}
+	if config.Embed && config.Output != "-" {
+		embedContents(outfile, out.String(), bugRegex, bugTag)
 	} else {
 		outfile.WriteString(out.String())
 	}
