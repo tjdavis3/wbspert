@@ -408,7 +408,7 @@ func WBS(sheets []Sheet, outfile *os.File, config *cfg) {
 		if config.ActiveOnly && sheet.IsCompleted() {
 			continue
 		}
-		out.WriteString(sheet.GetWBSLevel(config.Level))
+		out.WriteString(sheet.GetWBSLevel(99))
 		out.WriteString("\n")
 	}
 	out.WriteString("\nfooter\nAs of %date()\nend footer\n")
