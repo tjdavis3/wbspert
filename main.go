@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -20,31 +21,37 @@ import (
 )
 
 type cfg struct {
-	Input      string `short:"i" default:"-" description:"The input file or - for stdin"`
-	Output     string `short:"o" default:"-" description:"The output file or - for stdout"`
-	Level      int    `short:"l" default:"3" description:"The WBS level to use for PERT charts"`
-	WBS        bool   `short:"w"  description:"Generate the WBS"`
-	PERT       bool   `short:"p"  description:"Generate the PERT"`
-	Table      bool   `short:"t" description:"Generate Markdown Table"`
-	Embed      bool   `short:"e" description:"Embed in an existing file"`
-	Token      string `long:"token" env:"GITHUB_TOKEN" long:"github-token" description:"Access token for calling Github API"`
-	Org        string `long:"org" default:"ringsq" description:"Github org containing the project"`
-	Project    string `short:"j" long:"project" description:"Github Project name"`
-	ByRepo     bool   `short:"r" description:"Do WBS by repo name"`
-	Kanban     bool   `short:"k" description:"Build a kanban table"`
-	Column     string `short:"c" default:"Status" description:"Column field for Kanban table"`
-	BugList    bool   `short:"b" description:"Generate a buglist"`
-	ActiveOnly bool   `short:"a" description:"Only show incomplete tasks"`
+	Input       string `short:"i" default:"-" description:"The input file or - for stdin"`
+	Output      string `short:"o" default:"-" description:"The output file or - for stdout"`
+	Level       int    `short:"l" default:"3" description:"The WBS level to use for PERT charts"`
+	WBS         bool   `short:"w"  description:"Generate the WBS"`
+	PERT        bool   `short:"p"  description:"Generate the PERT"`
+	Table       bool   `short:"t" description:"Generate Markdown Table"`
+	Embed       bool   `short:"e" description:"Embed in an existing file"`
+	Token       string `long:"token" env:"GITHUB_TOKEN" long:"github-token" description:"Access token for calling Github API"`
+	Org         string `long:"org" default:"ringsq" description:"Github org containing the project"`
+	Project     string `short:"j" long:"project" description:"Github Project name"`
+	ByRepo      bool   `short:"r" description:"Do WBS by repo name"`
+	Kanban      bool   `short:"k" description:"Build a kanban table"`
+	Column      string `short:"c" default:"Status" description:"Column field for Kanban table"`
+	BugList     bool   `short:"b" description:"Generate a buglist"`
+	EpicList    bool   `short:"E" long:"epiclist" description:"Generate a checklist of epics"`
+	ActiveOnly  bool   `short:"a" description:"Only show incomplete tasks"`
+	EpicDir     string `short:"d" description:"The location to write epic stories"`
+	EpicStories bool   `short:"s" description:"Write epic stories"`
 }
 
 type Sheet struct {
-	WBS      string   `csv:"Task"`
-	Title    string   `csv:"Title"`
-	Parents  string   `csv:"Parents"`
-	Duration float32  `csv:"Duration,omitempty"`
-	Status   string   `csv:"Status"`
-	Labels   []string `csv:"omitempty"`
-	Repo     string   `csv:"omitempty"`
+	WBS      string            `csv:"Task"`
+	Title    string            `csv:"Title"`
+	Parents  string            `csv:"Parents"`
+	Duration float32           `csv:"Duration,omitempty"`
+	Status   string            `csv:"Status"`
+	Labels   []string          `csv:"omitempty"`
+	Fields   map[string]string `csv:"omitempty"`
+	Repo     string            `csv:"omitempty"`
+	Body     string            `csv:"omitempty"`
+	Number   int               `csv:"omitempty"`
 }
 
 const pertNode = `
@@ -73,6 +80,7 @@ const (
 	pertTag     = "pert"
 	kanbanTag   = "kanban"
 	bugTag      = "bug"
+	epicTag     = "epic"
 )
 
 var wbsEmbed = fmt.Sprintf(`(?m:^ *)<!--\s*%s:embed:start\s*-->(?s:.*?)<!--\s*%s:embed:end\s*-->(?m:\s*?$)`, wbsTag, wbsTag)
@@ -80,6 +88,7 @@ var wbsTableEmbed = fmt.Sprintf(`(?m:^ *)<!--\s*%s:embed:start\s*-->(?s:.*?)<!--
 var pertEmbed = fmt.Sprintf(`(?m:^ *)<!--\s*%s:embed:start\s*-->(?s:.*?)<!--\s*%s:embed:end\s*-->(?m:\s*?$)`, pertTag, pertTag)
 var kanbanEmbed = fmt.Sprintf(`(?m:^ *)<!--\s*%s:embed:start\s*-->(?s:.*?)<!--\s*%s:embed:end\s*-->(?m:\s*?$)`, kanbanTag, kanbanTag)
 var bugEmbed = fmt.Sprintf(`(?m:^ *)<!--\s*%s:embed:start\s*-->(?s:.*?)<!--\s*%s:embed:end\s*-->(?m:\s*?$)`, bugTag, bugTag)
+var epicEmbed = fmt.Sprintf(`(?m:^ *)<!--\s*%s:embed:start\s*-->(?s:.*?)<!--\s*%s:embed:end\s*-->(?m:\s*?$)`, epicTag, epicTag)
 
 var (
 	wbsRegex      = regexp.MustCompile(wbsEmbed)
@@ -87,6 +96,7 @@ var (
 	pertRegex     = regexp.MustCompile(pertEmbed)
 	kanbanRegex   = regexp.MustCompile(kanbanEmbed)
 	bugRegex      = regexp.MustCompile(bugEmbed)
+	epicRegex     = regexp.MustCompile(epicEmbed)
 )
 
 // GetParents splits the parents and returns
@@ -258,6 +268,14 @@ func main() {
 
 	if config.BugList {
 		BugList(sheets, out, config)
+	}
+
+	if config.EpicList {
+		EpicList(sheets, out, config)
+	}
+
+	if config.EpicStories {
+		EpicStories(sheets, config)
 	}
 
 }
@@ -456,6 +474,53 @@ func BugList(sheets []Sheet, outfile *os.File, config *cfg) {
 		embedContents(outfile, out.String(), bugRegex, bugTag)
 	} else {
 		outfile.WriteString(out.String())
+	}
+}
+
+func EpicList(sheets []Sheet, outfile *os.File, config *cfg) {
+	out := bytes.NewBufferString("")
+
+	for _, sheet := range sheets {
+		if inArray("epic", sheet.Labels) {
+			complete := " "
+			status := strings.ToLower(sheet.Status)
+			if status == "complete" || status == "done" {
+				complete = "x"
+			}
+			out.WriteString(fmt.Sprintf("- [%s] %s\n", complete, sheet.Title))
+		}
+	}
+	if config.Embed && config.Output != "-" {
+		embedContents(outfile, out.String(), epicRegex, epicTag)
+	} else {
+		outfile.WriteString(out.String())
+	}
+}
+
+var epicHeader = `---
+title: %s
+linkTitle: %s
+---
+
+`
+
+func EpicStories(sheets []Sheet, config *cfg) {
+	if _, err := os.Stat(config.EpicDir); os.IsNotExist(err) {
+		log.Fatalf("EpicDir doesn't exist: %s", config.EpicDir)
+	}
+	for _, sheet := range sheets {
+		if inArray("epic", sheet.Labels) {
+			out, err := os.Create(path.Join(config.EpicDir, fmt.Sprintf("%s.md", sheet.WBS)))
+			if err != nil {
+				log.Fatal("Error Opening file: %s", err)
+			}
+			out.WriteString(fmt.Sprintf(epicHeader, sheet.Title, sheet.WBS))
+			out.WriteString(fmt.Sprintf("**Status:** %s \n", sheet.Status))
+			//out.WriteString(fmt.Sprintf("| *Repository* | %s |\n\n", sheet.Repo))
+			out.WriteString("\n")
+			out.WriteString(sheet.Body)
+			out.Close()
+		}
 	}
 }
 
