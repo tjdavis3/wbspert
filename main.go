@@ -39,6 +39,7 @@ type cfg struct {
 	ActiveOnly  bool   `short:"a" description:"Only show incomplete tasks"`
 	EpicDir     string `short:"d" description:"The location to write epic stories"`
 	EpicStories bool   `short:"s" description:"Write epic stories"`
+	Filter      string `short:"f" long:"filter" description:"Filter WBS Table and Kanban by a label value"`
 }
 
 type Sheet struct {
@@ -359,7 +360,19 @@ func PertChart(sheets []Sheet, outfile *os.File, config *cfg) {
 		outfile.WriteString(out.String())
 	}
 }
-
+func FilterCards(columns []*projects.BoardColumn, filter string) []*projects.BoardColumn {
+	for _, column := range columns {
+		newCards := make([]*projects.Card, 0)
+		for _, card := range column.Cards {
+			if !(inArray(filter, card.Labels) || card.Fields["Type"] == filter) {
+				continue
+			}
+			newCards = append(newCards, card)
+		}
+		column.Cards = newCards
+	}
+	return columns
+}
 func Kanban(board *projects.Board, outfile *os.File, config *cfg) {
 	var rows [][]string
 	out := bytes.NewBufferString("")
@@ -367,6 +380,9 @@ func Kanban(board *projects.Board, outfile *os.File, config *cfg) {
 		board.SetCards(config.Column)
 	}
 
+	if len(config.Filter) > 0 {
+		FilterCards(board.Columns, config.Filter)
+	}
 	maxRows := determineRows(board.Columns)
 	rows = make([][]string, maxRows)
 	for i := range rows {
@@ -391,6 +407,7 @@ func Kanban(board *projects.Board, outfile *os.File, config *cfg) {
 				}
 				complete = "~~"
 			}
+
 			rows[colRow][colNum] = fmt.Sprintf("%s%s%s", complete, card.Title, complete)
 		}
 	}
@@ -448,6 +465,11 @@ func WBSTable(sheets []Sheet, outfile *os.File, config *cfg) {
 		if config.ActiveOnly && sheet.IsCompleted() {
 			continue
 		}
+		if len(config.Filter) > 0 {
+			if !(inArray(config.Filter, sheet.Labels) || sheet.Fields["Type"] == config.Filter) {
+				continue
+			}
+		}
 		out.WriteString(sheet.MarkdownRow())
 		out.WriteString("\n")
 	}
@@ -481,7 +503,7 @@ func EpicList(sheets []Sheet, outfile *os.File, config *cfg) {
 	out := bytes.NewBufferString("")
 
 	for _, sheet := range sheets {
-		if inArray("epic", sheet.Labels) {
+		if inArray("epic", sheet.Labels) || sheet.Fields["Type"] == "epic" {
 			complete := " "
 			status := strings.ToLower(sheet.Status)
 			if status == "complete" || status == "done" {
@@ -498,7 +520,7 @@ func EpicList(sheets []Sheet, outfile *os.File, config *cfg) {
 }
 
 var epicHeader = `---
-title: %s
+title: "%s: %s"
 linkTitle: %s
 ---
 
@@ -509,12 +531,12 @@ func EpicStories(sheets []Sheet, config *cfg) {
 		log.Fatalf("EpicDir doesn't exist: %s", config.EpicDir)
 	}
 	for _, sheet := range sheets {
-		if inArray("epic", sheet.Labels) {
+		if inArray("epic", sheet.Labels) || sheet.Fields["Type"] == "epic" {
 			out, err := os.Create(path.Join(config.EpicDir, fmt.Sprintf("%s.md", sheet.WBS)))
 			if err != nil {
-				log.Fatal("Error Opening file: %s", err)
+				log.Fatalf("Error Opening file: %s", err)
 			}
-			out.WriteString(fmt.Sprintf(epicHeader, sheet.Title, sheet.WBS))
+			out.WriteString(fmt.Sprintf(epicHeader, sheet.WBS, sheet.Title, sheet.WBS))
 			out.WriteString(fmt.Sprintf("**Status:** %s \n", sheet.Status))
 			//out.WriteString(fmt.Sprintf("| *Repository* | %s |\n\n", sheet.Repo))
 			out.WriteString("\n")

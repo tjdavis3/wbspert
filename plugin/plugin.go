@@ -14,17 +14,21 @@ import (
 
 type cfg struct {
 	Projects []struct {
-		Name       string
-		Output     string
-		Options    string
-		Level      int
-		Kanban     bool
-		WBS        bool
-		WBSTable   bool
-		PERT       bool
-		Column     string
-		ActiveOnly bool
-                BugList    bool
+		Name        string
+		Output      string
+		Options     string
+		Level       int
+		Kanban      bool
+		WBS         bool
+		WBSTable    bool
+		PERT        bool
+		Column      string
+		ActiveOnly  bool
+		BugList     bool
+		EpicList    bool
+		EpicDir     string
+		EpicStories bool
+		Filter      string
 	}
 }
 
@@ -68,6 +72,9 @@ func main() {
 		if project.Column != "" {
 			args = append(args, "-c", project.Column)
 		}
+		if project.Filter != "" {
+			args = append(args, "-f", project.Filter)
+		}
 		if project.ActiveOnly {
 			args = append(args, "-a")
 		}
@@ -83,11 +90,20 @@ func main() {
 		if project.PERT {
 			args = append(args, "-p")
 		}
-                if project.BugList {
+		if project.BugList {
 			args = append(args, "-b")
+		}
+		if project.EpicList {
+			args = append(args, "-E")
+		}
+		if project.EpicStories {
+			args = append(args, "-s")
 		}
 		if project.Level > 0 {
 			args = append(args, "-l", strconv.Itoa(project.Level))
+		}
+		if len(project.EpicDir) > 0 {
+			args = append(args, "-d", project.EpicDir)
 		}
 		cmd := exec.Command("wbspert", args...)
 		fmt.Println(cmd)
